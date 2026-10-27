@@ -211,7 +211,20 @@ class Obsdata(eh.obsdata.Obsdata):
         self.dec = refobs.dec
         self.timetype = refobs.timetype
         self.polrep = refobs.polrep
-    
+
+
+    def tlist(self, conj=False, t_gather=0., scan_gather=False):
+        # override ehtim tlist so that if all entries have the same length, the result is not cast into a 2D array
+        result = super().tlist(conj, t_gather, scan_gather)
+        if result.ndim == 1:
+            return result
+        else:
+            rewrapped_result = np.empty(shape=(result.shape[0],), dtype=object)
+            for i in range(result.shape[0]):
+                rewrapped_result[i] = np.array(result[i], dtype=self.data.dtype)
+            return rewrapped_result
+
+
     def split_obs(
             self,
             t_gather: float = 0.0,
