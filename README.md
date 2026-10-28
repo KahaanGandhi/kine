@@ -28,6 +28,26 @@ Coming Soon:
 - Multi-epoch + multi-frequency imaging
 - Scalability to large datasets
 
+### Static imaging with NUFFT
+
+For one observation, select the compact operator with one keyword:
+
+```python
+target, sigma, A = ob.Obsdata.get_data(obs, "visI", improxy, ttype="nufft")
+data = {"visI": {"target": target, "sigma": sigma, "A": A}}
+```
+
+Use the same `Trainer.train_step` call, model, initialization and loss as before.
+Omit `ttype` or use `ttype="direct"` for the original dense-matrix path.
+The NUFFT path requires `jax-finufft`. It supports the static `vis`, `amp`,
+`logamp`, `bs`, `cphase` and `logcamp` data products. It keeps the same pixel
+pulse, data selection and noise normalization. `nufft_eps=1e-6` controls the
+requested numerical accuracy. Numerical agreement is approximate, not bitwise.
+The existing video interface, `get_data_nfft`, is unchanged.
+The static example script also accepts `--ttype nufft`.
+For a short runnable example using the bundled M87 data, see
+[example_static_nufft.ipynb](notebooks/example_static_nufft.ipynb).
+
 ## Documentation
 
 Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes installation instructions, simple example scripts to get started, a complete user guide to imaging with kine, a parameter overview, and API documentation.
