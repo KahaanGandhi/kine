@@ -60,6 +60,8 @@ ut.init_worker(vi.Image.async_plot, q)
 par = argparse.ArgumentParser()
 par.add_argument('-obs', type=str, help='uvfits file name')
 par.add_argument('-yml', type=str, help='hyperparameter file name')
+par.add_argument('--ttype', choices=['direct', 'nufft'], default='direct',
+                 help='Fourier operator (default: direct)')
 par = par.parse_args()
 
 # Load hyperparameters from YAML file
@@ -111,7 +113,7 @@ print("-------\nRetrieving data products from each epoch...\n")
 
 data = {}
 for dtype in h.data_prod:
-    target, sigma, A = ob.Obsdata.get_data(obs, dtype, improxy)
+    target, sigma, A = ob.Obsdata.get_data(obs, dtype, improxy, ttype=par.ttype)
     data[dtype] = {
         'target': target,
         'sigma': sigma,

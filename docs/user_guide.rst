@@ -404,7 +404,35 @@ amplitudes. Because snapshots contain different numbers of visibilities, the
 arrays are padded to a common length and ``padmask`` marks the real entries, so
 that padding contributes nothing to the loss.
 
-**Non-Uniform Fourier Transform**
+**Static NUFFT with the same training interface**
+
+For a single ``Obsdata``, change only the Fourier type:
+
+.. code-block:: python
+
+   data = {}
+   for dtype in h.data_prod:
+       target, sigma, A = ob.Obsdata.get_data(
+           obs, dtype, improxy, ttype="nufft"
+       )
+       data[dtype] = {"target": target, "sigma": sigma, "A": A}
+
+The training call, network, initialization and loss definitions stay the same.
+Here ``A`` contains coordinates and pixel factors instead of a dense matrix.
+``ttype="direct"`` remains the default. The static switch supports ``vis``,
+``amp``, ``logamp``, ``bs``, ``cphase`` and ``logcamp`` for the Stokes channels.
+It requires ``jax-finufft``; a missing installation raises an actionable error.
+Use ``nufft_eps`` to change the requested accuracy (default ``1e-6``).
+The operator handles rectangular, even and odd image dimensions and uses the
+prior's pixel pulse. Predictions and gradients should agree to numerical
+accuracy; optimization trajectories need not be identical.
+
+This switch is for static imaging. For videos, use the existing interface below.
+CPU/GPU availability depends on the installed ``jax-finufft`` build.
+The notebook ``notebooks/example_static_nufft.ipynb`` shows a small static fit
+with the bundled M87 data. Change ``TTYPE`` to compare both backends.
+
+**Existing video NUFFT interface**
 
 .. code-block:: python
 
@@ -443,9 +471,10 @@ is only there to speed up this (purely CPU-side) preparation.
 
 .. note::
 
-   Prefer the direct DFT for maximum speed. Switch to the NUFFT when memory 
-   becomes a problem, which happens for large numbers of data points and/or 
-   numerous epochs: the DFT stores a dense ``(nvis × npix²)`` complex matrix per 
+   Compare the backends on the intended hardware and data size. Direct matrix
+   multiplication can be fast for small problems, while NUFFT avoids the dense
+   matrix allocation for large numbers of data points or epochs.
+   The DFT stores a dense ``(nvis × npix²)`` complex matrix per
    snapshot and per Fourier operator, so its footprint grows quickly with the 
    number of pixels, visibilities and frames.
 

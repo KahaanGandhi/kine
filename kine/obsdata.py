@@ -30,6 +30,7 @@ from jax import Array
 from jax import numpy as jnp
 
 from . import utils as ut
+from .fourier import static_nufft_data
 
 
 class Obsdata(eh.obsdata.Obsdata):
@@ -398,7 +399,9 @@ class Obsdata(eh.obsdata.Obsdata):
             obs: Self | list[Self],
             dtype: str,
             prior: eh.image.Image,
-            ttype: str = 'direct'
+            ttype: str = 'direct',
+            *,
+            nufft_eps: float = 1e-6
     ) -> list[Array]:
         """Generate data products.
 
@@ -408,12 +411,19 @@ class Obsdata(eh.obsdata.Obsdata):
             dtype: Data product type (e.g., visI, cphaseI).
                 Last letter indicates polarization.
             prior: ehtim's Image object from which metadata is extracted.
-            ttype: Fourier transform type ('direct', 'nfft').
+            ttype: Fourier transform type. ``'nufft'`` selects the native
+                static NUFFT operator; ``'direct'`` remains the default.
+                The existing ehtim ``'nfft'`` option is unchanged.
+            nufft_eps: Requested accuracy for ``ttype='nufft'``.
 
         Returns:
             List of jnp.ndarrays with data products and corresponding sigmas,
             Fourier transformations (optional) and padding masks (optional).
+            With ``ttype='nufft'``, the third item is a compact operator.
+            Keep it under the same ``'A'`` key when calling Trainer.
         """
+        if ttype.lower() == 'nufft':
+            return static_nufft_data(obs, dtype, prior, nufft_eps)
         # Check whether single or list of obs
         if not isinstance(obs, list):
             # mbreve data products

@@ -29,6 +29,7 @@ except ImportError:
     print('Warning: NUFFT not installed \n')
 
 from . import utils as ut
+from .fourier import NUFFT
 
 
 NPIX: int = 0
@@ -815,6 +816,8 @@ class Trainer(train_state.TrainState):
         Returns:
             The :math:`\\chi^2` of that data product.
         """
+        if isinstance(data.get('A'), NUFFT):
+            return Trainer._loss_chi_nufft(video, data, dtype)
         # Check if static (no padmask) or dynamic imaging
         if 'padmask' in data:
             # Check if using NUFFT
@@ -903,6 +906,30 @@ class Trainer(train_state.TrainState):
                 return Trainer._loss_logcamp_2d(video, data)
             if dtype == 'bs':
                 return Trainer._loss_bs_2d(video, data)
+
+    @staticmethod
+    def _loss_chi_nufft(image, data, dtype):
+        """Sample a compact static operator, then use the existing losses."""
+        if 'padmask' in data:
+            raise ValueError("The compact NUFFT operator is for static imaging")
+        vis = data['A'](image)
+        # A unit mask makes the existing masked losses equal the static means.
+        values = {'target': data['target'], 'sigma': data['sigma'],
+                  'padmask': jnp.ones_like(data['sigma'])}
+        if dtype == 'vis':
+            return Trainer._loss_vis_3d_nfft(vis[0], values)
+        if dtype == 'amp':
+            return Trainer._loss_amp_3d_nfft(jnp.abs(vis[0]), values)
+        if dtype == 'logamp':
+            return Trainer._loss_logamp_3d_nfft(jnp.log(jnp.abs(vis[0]) + 1e-12), values)
+        if dtype == 'bs':
+            return Trainer._loss_vis_3d_nfft(jnp.prod(vis, axis=0), values)
+        if dtype == 'cphase':
+            return Trainer._loss_cphase_3d_nfft(jnp.angle(jnp.prod(vis, axis=0)), values)
+        if dtype == 'logcamp':
+            logs = jnp.log(jnp.abs(vis))
+            return Trainer._loss_logcamp_3d_nfft(logs[0]+logs[1]-logs[2]-logs[3], values)
+        raise NotImplementedError(f"NUFFT data product {dtype!r} is not supported")
 
 # Data product loss functions --------------------------------------------------
 
