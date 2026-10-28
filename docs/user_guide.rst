@@ -370,8 +370,8 @@ The loss terms from all listed data products are summed with equal weight.
      - :math:`\breve m = (\tilde Q + i\tilde U)/\tilde I`
      - Complex polarization ratio, for polarimetric imaging.
 
-DFT vs NNFT
-...........
+DFT vs NUFFT
+............
 
 **Direct Fourier Transform**
 
@@ -405,6 +405,24 @@ arrays are padded to a common length and ``padmask`` marks the real entries, so
 that padding contributes nothing to the loss.
 
 **Non-Uniform Fourier Transform**
+
+For a single ``Obsdata``, the NUFFT can be used without changing the training
+call. Set ``ttype='nufft'`` when preparing the data:
+
+.. code-block:: python
+
+   data = {}
+   for dtype in h.data_prod:
+       target, sigma, A = ob.Obsdata.get_data(obs, dtype, improxy, ttype='nufft')
+       data[dtype] = {'target': target, 'sigma': sigma, 'A': A}
+
+Here ``A`` holds the uv points and pixel factors instead of a dense Fourier
+matrix. The targets, uncertainties and network remain the same. This static
+option supports ``vis``, ``amp``, ``logamp``, ``bs``, ``cphase`` and
+``logcamp`` for Stokes I, Q, U and V. It requires ``jax-finufft``;
+``ttype='direct'`` remains the default.
+
+For video imaging, the NUFFT inputs are prepared separately:
 
 .. code-block:: python
 
@@ -443,14 +461,12 @@ is only there to speed up this (purely CPU-side) preparation.
 
 .. note::
 
-   Prefer the direct DFT for maximum speed. Switch to the NUFFT when memory 
-   becomes a problem, which happens for large numbers of data points and/or 
-   numerous epochs: the DFT stores a dense ``(nvis × npix²)`` complex matrix per 
-   snapshot and per Fourier operator, so its footprint grows quickly with the 
-   number of pixels, visibilities and frames.
+   The direct DFT can be fast for small problems. The NUFFT avoids storing a
+   dense ``(nvis x npix²)`` complex matrix per snapshot and Fourier operator,
+   which becomes costly with many pixels, visibilities or frames.
 
-   Note that the NUFFT is currently aveilable for Stokes I only, and does not
-   support bispectra ``mbreve``, or simultaneous gain fitting.
+   Note that the video NUFFT is currently available for Stokes I only, and does
+   not support bispectra, ``mbreve``, or simultaneous gain fitting.
 
 
 6. Neural field, optimizer, and training state

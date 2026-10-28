@@ -28,6 +28,22 @@ Coming Soon:
 - Multi-epoch + multi-frequency imaging
 - Scalability to large datasets
 
+### Static imaging with NUFFT
+
+For a single observation, use `ttype='nufft'` to compute visibilities
+without storing a dense Fourier matrix:
+
+```python
+from kine.obsdata import Obsdata
+
+target, sigma, A = Obsdata.get_data(obs, 'visI', improxy, ttype='nufft')
+data = {'visI': {'target': target, 'sigma': sigma, 'A': A}}
+```
+
+The training call stays the same and the direct transform remains the default.
+This option requires `jax-finufft`. See the
+[static NUFFT example](notebooks/example_static_nufft.ipynb) for a complete run.
+
 ## Documentation
 
 Full documentation is available at (https://mariannafoschi.github.io/kine/) and includes installation instructions, simple example scripts to get started, a complete user guide to imaging with kine, a parameter overview, and API documentation.
