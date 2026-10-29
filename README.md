@@ -28,7 +28,7 @@ Coming Soon:
 - Multi-epoch + multi-frequency imaging
 - Scalability to large datasets
 
-### Static imaging with NUFFT
+### Static and multi-epoch imaging with NUFFT
 
 For a single observation, use `ttype='nufft'` to compute visibilities
 without storing a dense Fourier matrix:
@@ -43,6 +43,16 @@ data = {'visI': {'target': target, 'sigma': sigma, 'A': A}}
 The training call stays the same and the direct transform remains the default.
 This option requires `jax-finufft`. See the
 [static NUFFT example](notebooks/example_static_nufft.ipynb) for a complete run.
+
+For multiple observations, pass their list to the same function. Each frame
+uses its own measured uv coordinates. Since observations can have different
+numbers of measurements, Kine pads the shorter arrays to the same length,
+and `padmask` omits those entries from the loss:
+
+```python
+target, sigma, A, padmask = Obsdata.get_data(obslist, 'visI', improxy, ttype='nufft')
+data = {'visI': {'target': target, 'sigma': sigma, 'A': A, 'padmask': padmask}}
+```
 
 ## Documentation
 
