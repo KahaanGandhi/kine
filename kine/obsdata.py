@@ -23,13 +23,16 @@ import numpy as np
 from numpy.typing import NDArray
 import scipy.interpolate as interp
 import ehtim as eh
+from ehtim import const_def as ehc
 import ehtim.imaging.imager_utils as ehu
 import ehtim.imaging.pol_imager_utils as ehup
+from ehtim.observing import obs_helpers as obsh
 
 from jax import Array
 from jax import numpy as jnp
 
 from . import utils as ut
+from .fourier import NUFFT
 
 
 class Obsdata(eh.obsdata.Obsdata):
@@ -398,7 +401,9 @@ class Obsdata(eh.obsdata.Obsdata):
             obs: Self | list[Self],
             dtype: str,
             prior: eh.image.Image,
-            ttype: str = 'direct'
+            ttype: str = 'direct',
+            *,
+            nufft_eps: float = 1e-6
     ) -> list[Array]:
         """Generate data products.
 
@@ -408,12 +413,20 @@ class Obsdata(eh.obsdata.Obsdata):
             dtype: Data product type (e.g., visI, cphaseI).
                 Last letter indicates polarization.
             prior: ehtim's Image object from which metadata is extracted.
-            ttype: Fourier transform type ('direct', 'nfft').
+            ttype: Fourier transform type. ``'nufft'`` selects the native
+                static NUFFT operator; ``'direct'`` remains the default.
+                The existing ehtim ``'nfft'`` option is unchanged.
+            nufft_eps: Requested accuracy for ``ttype='nufft'``.
 
         Returns:
             List of jnp.ndarrays with data products and corresponding sigmas,
             Fourier transformations (optional) and padding masks (optional).
+            With ``ttype='nufft'``, the third item is a compact operator.
+            Keep it under the same ``'A'`` key when calling Trainer.
         """
+        # Use the same target, sigma, and A keys for both Fourier methods
+        if ttype.lower() == 'nufft':
+            return Obsdata._get_static_nufft_data(obs, dtype, prior, nufft_eps)
         # Check whether single or list of obs
         if not isinstance(obs, list):
             # mbreve data products
@@ -487,6 +500,76 @@ class Obsdata(eh.obsdata.Obsdata):
             )
             A[i] = jnp.concatenate([A[i], pad(A[i], maxv)], axis=1)
         return ut.list_to_jaxarr(target, sigma, A, padmask)
+
+    @staticmethod
+    def _parse_static_nufft_request(obs, dtype):
+        """Check a static request and split its product and polarization (e.g., visI -> vis, I)."""
+        if isinstance(obs, list):
+            raise NotImplementedError("ttype='nufft' supports one Obsdata; use get_data_nfft for videos")
+        product, pol = dtype[:-1], dtype[-1:]
+        if (product not in ('vis', 'amp', 'logamp', 'bs', 'cphase', 'logcamp')
+                or pol not in ('I', 'Q', 'U', 'V')):
+            raise NotImplementedError("ttype='nufft' supports static vis, amp, logamp, bs, cphase and logcamp")
+        return product, pol
+
+    @staticmethod
+    def _get_static_nufft_data(obs, dtype, prior, eps=1e-6):
+        """
+        Prepare one static observation for NUFFT imaging.
+
+        Follows ehtim's ``chisqdata_*`` selection to get the measured target,
+        uncertainty, and UV coordinates without building ``ftmatrix``.
+        Visibilities and amplitudes use one UV pair per measurement; closure
+        products use three or four baseline legs.
+
+        Return the target, sigma, and NUFFT operator for the trainer.
+        """
+        product, pol = Obsdata._parse_static_nufft_request(obs, dtype)
+
+        vtype = ehc.vis_poldict[pol]
+        if product in ('vis', 'amp', 'logamp'):
+            # Follow ehtim's chisqdata_vis/amp selection
+            unpack_fields = ['t1', 't2', 'u', 'v', vtype,
+                             ehc.amp_poldict[pol], ehc.sig_poldict[pol]]
+            # chisqdata_amp uses cached amplitudes only for Stokes I
+            cached_amp = obs.amp if product != 'vis' and pol == 'I' else None
+            if cached_amp is not None and len(cached_amp):
+                rows = cached_amp
+            else:
+                rows = obs.unpack(unpack_fields, debias=False)
+            uv, vis, amp, sigma = ehu.apply_systematic_noise_snrcut(rows, 0., 0., pol)
+            target = vis if product == 'vis' else amp
+        else:
+            # Follow ehtim's chisqdata_bs/cphase/logcamp selection
+            if product == 'bs':
+                rows = obs.bispec
+                if rows is None or len(rows) == 0 or pol != 'I':
+                    rows = obs.bispectra(mode='all', vtype=vtype, count='min', snrcut=0.)
+                else:
+                    rows = obsh.reduce_tri_minimal(obs, rows)
+                value_field, sigma_field, nlegs = 'bispec', 'sigmab', 3
+            elif product == 'cphase':
+                rows = obs.cphase
+                if rows is None or len(rows) == 0 or pol != 'I':
+                    rows = obs.c_phases(mode='all', vtype=vtype, count='min', uv_min=False, snrcut=0.)
+                else:
+                    rows = obsh.reduce_tri_minimal(obs, rows)
+                value_field, sigma_field, nlegs = 'cphase', 'sigmacp', 3
+            else:
+                rows = obs.logcamp
+                if rows is None or len(rows) == 0 or pol != 'I':
+                    rows = obs.c_amplitudes(mode='all', count='min', vtype=vtype,
+                                            ctype='logcamp', debias=False, snrcut=0.)
+                else:
+                    rows = obsh.reduce_quad_minimal(obs, rows, ctype='logcamp')
+                value_field, sigma_field, nlegs = 'camp', 'sigmaca', 4
+            target, sigma = rows[value_field], rows[sigma_field]
+            uv = np.stack([np.column_stack([rows[f'u{leg}'], rows[f'v{leg}']])
+                           for leg in range(1, nlegs+1)])
+
+        operator = NUFFT.from_uv(uv, prior, eps)
+        return [jnp.asarray(target).reshape(1, -1),
+                jnp.asarray(sigma).reshape(1, -1), operator]
 
     @staticmethod
     def get_data_nfft(
