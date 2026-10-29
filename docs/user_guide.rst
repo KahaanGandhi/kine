@@ -416,13 +416,28 @@ call. Set ``ttype='nufft'`` when preparing the data:
        target, sigma, A = ob.Obsdata.get_data(obs, dtype, improxy, ttype='nufft')
        data[dtype] = {'target': target, 'sigma': sigma, 'A': A}
 
-Here ``A`` holds the uv points and pixel factors instead of a dense Fourier
-matrix. The targets, uncertainties and network remain the same. This static
-option supports ``vis``, ``amp``, ``logamp``, ``bs``, ``cphase`` and
+For multi-epoch imaging, pass the observation list to the same function:
+
+.. code-block:: python
+
+   data = {}
+   for dtype in h.data_prod:
+       target, sigma, A, padmask = ob.Obsdata.get_data(
+           obslist, dtype, improxy, ttype='nufft'
+       )
+       data[dtype] = {'target': target, 'sigma': sigma,
+                      'A': A, 'padmask': padmask}
+
+Here ``A`` stores uv coordinates and pixel factors instead of dense Fourier
+matrices. Observations with fewer measurements are padded to match the longest,
+and ``padmask`` omits those entries from the loss. The network and training
+call stay the same.
+
+This option supports ``vis``, ``amp``, ``logamp``, ``bs``, ``cphase`` and
 ``logcamp`` for Stokes I, Q, U and V. It requires ``jax-finufft``;
 ``ttype='direct'`` remains the default.
 
-For video imaging, the NUFFT inputs are prepared separately:
+For dynamic imaging, the NUFFT inputs are prepared separately:
 
 .. code-block:: python
 

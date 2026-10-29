@@ -820,7 +820,7 @@ class Trainer(train_state.TrainState):
         """
         # NUFFT operator replaces the usual A slot
         if isinstance(data.get('A'), NUFFT):
-            return Trainer._loss_chi_2d_nufft(video, data, dtype)
+            return Trainer._loss_chi_nufft(video, data, dtype)
         # Check if static (no padmask) or dynamic imaging
         if 'padmask' in data:
             # Check if using NUFFT
@@ -911,31 +911,34 @@ class Trainer(train_state.TrainState):
                 return Trainer._loss_bs_2d(video, data)
 
     @staticmethod
-    def _loss_chi_2d_nufft(image, data, dtype):
-        """Compute one static-image loss term using NUFFT predictions.
+    def _loss_chi_nufft(image, data, dtype):
+        """Compute a static or multi-frame loss from NUFFT predictions.
 
         ``dtype`` excludes the polarization letter, e.g. ``vis`` from ``visI``.
         """
-        if 'padmask' in data:
-            raise ValueError("The compact NUFFT operator is for static imaging")
         vis = data['A'](image)
-        # The video NUFFT losses divide by padmask.sum(), so we use ones
+        # The video losses normalize by the number of unpadded measurements
         values = {'target': data['target'], 'sigma': data['sigma'],
-                  'padmask': jnp.ones_like(data['sigma'])}
-        # Form the requested measurement and reuse Kine's NUFFT video loss
+                  'padmask': data.get('padmask', jnp.ones_like(data['sigma']))}
+        # vis has shape (legs, measurements) for one image, or
+        # (frames, legs, measurements) for multiple images
+        leg_axis = 0 if vis.ndim == 2 else 1
+        first_leg = jnp.take(vis, 0, axis=leg_axis)
+        # Form the requested measurement and reuse Kine's video loss terms
         if dtype == 'vis':
-            return Trainer._loss_vis_3d_nfft(vis[0], values)
+            return Trainer._loss_vis_3d_nfft(first_leg, values)
         if dtype == 'amp':
-            return Trainer._loss_amp_3d_nfft(jnp.abs(vis[0]), values)
+            return Trainer._loss_amp_3d_nfft(jnp.abs(first_leg), values)
         if dtype == 'logamp':
-            return Trainer._loss_logamp_3d_nfft(jnp.log(jnp.abs(vis[0]) + 1e-12), values)
+            return Trainer._loss_logamp_3d_nfft(jnp.log(jnp.abs(first_leg) + 1e-12), values)
         if dtype == 'bs':
-            return Trainer._loss_vis_3d_nfft(jnp.prod(vis, axis=0), values)
+            return Trainer._loss_vis_3d_nfft(jnp.prod(vis, axis=leg_axis), values)
         if dtype == 'cphase':
-            return Trainer._loss_cphase_3d_nfft(jnp.angle(jnp.prod(vis, axis=0)), values)
+            return Trainer._loss_cphase_3d_nfft(jnp.angle(jnp.prod(vis, axis=leg_axis)), values)
         if dtype == 'logcamp':
             logs = jnp.log(jnp.abs(vis))
-            return Trainer._loss_logcamp_3d_nfft(logs[0]+logs[1]-logs[2]-logs[3], values)
+            legs = jnp.moveaxis(logs, leg_axis, 0)
+            return Trainer._loss_logcamp_3d_nfft(legs[0]+legs[1]-legs[2]-legs[3], values)
         raise NotImplementedError(f"NUFFT data product {dtype!r} is not supported")
 
 # Data product loss functions --------------------------------------------------
