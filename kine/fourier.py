@@ -104,7 +104,6 @@ class NUFFT:
         return cls(
             pad([op.u for op in operators]),
             pad([op.v for op in operators]),
-            # Keep padded visibilities nonzero for log/phase losses
             pad([op.factor for op in operators], fill=1),
             operators[0].shape,
             operators[0].eps

@@ -920,6 +920,9 @@ class Trainer(train_state.TrainState):
         # The video losses normalize by the number of unpadded measurements
         values = {'target': data['target'], 'sigma': data['sigma'],
                   'padmask': data.get('padmask', jnp.ones_like(data['sigma']))}
+        # Zero-valued padded visibilities can give undefined gradients
+        if 'padmask' in data:
+            vis = jnp.where(data['padmask'][:, None, :], vis, 1 + 0j)
         # vis has shape (legs, measurements) for one image, or
         # (frames, legs, measurements) for multiple images
         leg_axis = 0 if vis.ndim == 2 else 1

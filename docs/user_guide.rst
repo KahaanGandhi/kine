@@ -768,13 +768,12 @@ function that evaluates the network on the grid, computes the loss, takes the
 gradient with respect to every training state passed in, applies the update, and
 refreshes the batch-norm statistics.
 
-``tr.NPIX`` is a module-level global variable that must be set to the current 
-``npix`` before training. It is needed by the NUFFT and by the border 
-regularizer, and it must be updated at every step of a multi-resolution 
-pipeline.
+``tr.NPIX`` is a module-level global variable that must be set to the current
+``npix`` before training with the existing dynamic NUFFT path or the border
+regularizer. It must be updated at every step of a multi-resolution pipeline.
 
-When using NUFFT, :meth:`kine.trainer.Trainer.train_step` should also take the 
-NUFFT arguments as input:
+When using the existing dynamic NUFFT path, :meth:`kine.trainer.Trainer.train_step`
+should also take the NUFFT arguments as input:
 
 .. code-block:: python
 
