@@ -404,7 +404,7 @@ class Obsdata(eh.obsdata.Obsdata):
             ttype: str = 'direct',
             *,
             nufft_eps: float = 1e-6
-    ) -> list[Array]:
+    ) -> list[Array | NUFFT]:
         """Generate data products.
 
         Args:
@@ -413,19 +413,21 @@ class Obsdata(eh.obsdata.Obsdata):
             dtype: Data product type (e.g., visI, cphaseI).
                 Last letter indicates polarization.
             prior: ehtim's Image object from which metadata is extracted.
-            ttype: Fourier transform type. ``'nufft'`` selects the native
-                static NUFFT operator; ``'direct'`` remains the default.
+            ttype: Fourier transform type. ``'nufft'`` selects the NUFFT
+                operator; ``'direct'`` remains the default.
                 The existing ehtim ``'nfft'`` option is unchanged.
             nufft_eps: Requested accuracy for ``ttype='nufft'``.
 
         Returns:
-            List of jnp.ndarrays with data products and corresponding sigmas,
-            Fourier transformations (optional) and padding masks (optional).
-            With ``ttype='nufft'``, the third item is a compact operator.
+            List with data products, sigmas, a Fourier operator, and an
+            optional padding mask.
+            With ``ttype='nufft'``, the third item is a NUFFT operator.
             Keep it under the same ``'A'`` key when calling Trainer.
         """
         # Use the same target, sigma, and A keys for both Fourier methods
         if ttype.lower() == 'nufft':
+            if isinstance(obs, list):
+                return Obsdata._get_multiframe_nufft_data(obs, dtype, prior, nufft_eps)
             return Obsdata._get_static_nufft_data(obs, dtype, prior, nufft_eps)
         # Check whether single or list of obs
         if not isinstance(obs, list):
@@ -502,7 +504,10 @@ class Obsdata(eh.obsdata.Obsdata):
         return ut.list_to_jaxarr(target, sigma, A, padmask)
 
     @staticmethod
-    def _parse_static_nufft_request(obs, dtype):
+    def _parse_static_nufft_request(
+            obs: Self | list[Self],
+            dtype: str
+    ) -> tuple[str, str]:
         """Check a static request and split its product and polarization (e.g., visI -> vis, I)."""
         if isinstance(obs, list):
             raise NotImplementedError("ttype='nufft' supports one Obsdata; use get_data_nfft for videos")
@@ -513,7 +518,12 @@ class Obsdata(eh.obsdata.Obsdata):
         return product, pol
 
     @staticmethod
-    def _get_static_nufft_data(obs, dtype, prior, eps=1e-6):
+    def _get_static_nufft_data(
+            obs: Self,
+            dtype: str,
+            prior: eh.image.Image,
+            eps: float = 1e-6
+    ) -> list[Array | NUFFT]:
         """
         Prepare one static observation for NUFFT imaging.
 
@@ -570,6 +580,35 @@ class Obsdata(eh.obsdata.Obsdata):
         operator = NUFFT.from_uv(uv, prior, eps)
         return [jnp.asarray(target).reshape(1, -1),
                 jnp.asarray(sigma).reshape(1, -1), operator]
+
+    @staticmethod
+    def _get_multiframe_nufft_data(
+            obslist: list[Self],
+            dtype: str,
+            prior: eh.image.Image,
+            eps: float = 1e-6
+    ) -> list[Array | NUFFT]:
+        """Prepare several observations for one multi-frame NUFFT training run.
+
+        Return ``target`` and ``sigma`` with shape ``(nframes, maxvis)``,
+        a matching operator, and ``padmask`` to omit padded measurements.
+        """
+        if not obslist:
+            raise ValueError("At least one observation is required")
+        # Extract (1, nvis) arrays using the single-frame function
+        frames = [Obsdata._get_static_nufft_data(obs, dtype, prior, eps)
+                  for obs in obslist]
+        # Longest measurement list for this dtype
+        maxvis = max(target.shape[-1] for target, _, _ in frames)
+        # Pad to maxvis, then stack the frames
+        target = jnp.stack([jnp.pad(t[0], (0, maxvis-t.shape[-1]))
+                            for t, _, _ in frames])
+        sigma = jnp.stack([jnp.pad(s[0], (0, maxvis-s.shape[-1]), constant_values=1)
+                           for _, s, _ in frames])
+        padmask = jnp.stack([jnp.arange(maxvis) < t.shape[-1]
+                             for t, _, _ in frames])
+        operator = NUFFT.stack([op for _, _, op in frames])
+        return [target, sigma, operator, padmask]
 
     @staticmethod
     def get_data_nfft(
