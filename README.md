@@ -42,7 +42,7 @@ data = {'visI': {'target': target, 'sigma': sigma, 'A': A}}
 
 The training call stays the same and the direct transform remains the default.
 This option requires `jax-finufft`. See the
-[static NUFFT example](notebooks/example_static_nufft.ipynb) for a complete run.
+[static NUFFT example](notebooks/CS_example_static_nufft.ipynb) for a complete run.
 
 For multiple observations, pass their list to the same function. Each frame
 uses its own measured uv coordinates. Since observations can have different
