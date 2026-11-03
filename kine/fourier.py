@@ -1,4 +1,5 @@
 # Copyright (C) 2026 Marianna Foschi, Antonio Fuentes, Brandon Zhao
+# Added by Kahaan Gandhi and Cheyanne Shariat
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """NUFFT operators for static and multi-frame imaging."""

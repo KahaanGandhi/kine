@@ -424,6 +424,7 @@ class Obsdata(eh.obsdata.Obsdata):
             With ``ttype='nufft'``, the third item is a NUFFT operator.
             Keep it under the same ``'A'`` key when calling Trainer.
         """
+        # Extended by Kahaan Gandhi and Cheyanne Shariat to select NUFFT data
         # Use the same target, sigma, and A keys for both Fourier methods
         if ttype.lower() == 'nufft':
             if isinstance(obs, list):
@@ -503,6 +504,7 @@ class Obsdata(eh.obsdata.Obsdata):
             A[i] = jnp.concatenate([A[i], pad(A[i], maxv)], axis=1)
         return ut.list_to_jaxarr(target, sigma, A, padmask)
 
+    # Added by Kahaan Gandhi and Cheyanne Shariat for static NUFFT requests
     @staticmethod
     def _parse_static_nufft_request(
             obs: Self | list[Self],
@@ -517,6 +519,7 @@ class Obsdata(eh.obsdata.Obsdata):
             raise NotImplementedError("ttype='nufft' supports static vis, amp, logamp, bs, cphase and logcamp")
         return product, pol
 
+    # Added by Kahaan Gandhi and Cheyanne Shariat for static NUFFT data
     @staticmethod
     def _get_static_nufft_data(
             obs: Self,
@@ -581,6 +584,7 @@ class Obsdata(eh.obsdata.Obsdata):
         return [jnp.asarray(target).reshape(1, -1),
                 jnp.asarray(sigma).reshape(1, -1), operator]
 
+    # Added by Kahaan Gandhi and Cheyanne Shariat for multi-epoch NUFFT data
     @staticmethod
     def _get_multiframe_nufft_data(
             obslist: list[Self],
