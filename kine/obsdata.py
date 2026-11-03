@@ -212,9 +212,16 @@ class Obsdata(eh.obsdata.Obsdata):
         self.timetype = refobs.timetype
         self.polrep = refobs.polrep
 
-
+    # Added by Jennifer Ying. Needed to convert new data format to kine.obsdata.Obsdata object
     def tlist(self, conj=False, t_gather=0., scan_gather=False):
-        # override ehtim tlist so that if all entries have the same length, the result is not cast into a 2D array
+
+        """Wrapper for ehtim tlist.
+
+        ehtim usually returns a 1D array of np.void objects, but if
+        all entries happen to have the same length, ehtim casts the
+        result into a 2D array instead. This rewraps the result to
+        maintain the same behavior in all cases.
+        """
         result = super().tlist(conj, t_gather, scan_gather)
         if result.ndim == 1:
             return result
