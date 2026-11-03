@@ -214,7 +214,27 @@ class Obsdata(eh.obsdata.Obsdata):
         self.dec = refobs.dec
         self.timetype = refobs.timetype
         self.polrep = refobs.polrep
-    
+
+    # Added by Jennifer Ying. Needed to convert new data format to kine.obsdata.Obsdata object
+    def tlist(self, conj=False, t_gather=0., scan_gather=False):
+
+        """Wrapper for ehtim tlist.
+
+        ehtim usually returns a 1D array of np.void objects, but if
+        all entries happen to have the same length, ehtim casts the
+        result into a 2D array instead. This rewraps the result to
+        maintain the same behavior in all cases.
+        """
+        result = super().tlist(conj, t_gather, scan_gather)
+        if result.ndim == 1:
+            return result
+        else:
+            rewrapped_result = np.empty(shape=(result.shape[0],), dtype=object)
+            for i in range(result.shape[0]):
+                rewrapped_result[i] = np.array(result[i], dtype=self.data.dtype)
+            return rewrapped_result
+
+
     def split_obs(
             self,
             t_gather: float = 0.0,
