@@ -818,6 +818,7 @@ class Trainer(train_state.TrainState):
         Returns:
             The :math:`\\chi^2` of that data product.
         """
+        # Extended by Kahaan Gandhi and Cheyanne Shariat to dispatch NUFFT losses
         # NUFFT operator replaces the usual A slot
         if isinstance(data.get('A'), NUFFT):
             return Trainer._loss_chi_nufft(video, data, dtype)
@@ -910,6 +911,7 @@ class Trainer(train_state.TrainState):
             if dtype == 'bs':
                 return Trainer._loss_bs_2d(video, data)
 
+    # Added by Kahaan Gandhi and Cheyanne Shariat for NUFFT losses
     @staticmethod
     def _loss_chi_nufft(image, data, dtype):
         """Compute a static or multi-frame loss from NUFFT predictions.
