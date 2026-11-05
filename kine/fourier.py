@@ -63,7 +63,7 @@ class NUFFT:
             prior: eh.image.Image,
             eps: float = 1e-6
     ) -> Self:
-        """Prepare NUFFT sampling coordinates from UV points in wavelengths."""
+        """ Prepare the NUFFT operator using the observed uv locations and image grid ('prior')."""
         uv = np.asarray(uv)
         # Give ordinary visibilities the same leading baseline axis as closures
         if uv.ndim == 2:
@@ -93,7 +93,7 @@ class NUFFT:
 
     @classmethod
     def stack(cls, operators: list[Self]) -> Self:
-        """Pad and stack one operator per frame without building Fourier matrices."""
+        """Pad and stack one operator per frame. Used for multiple images, eg for time series or multiple frequencies"""
         # Frames can have different measurement counts; pad to the longest
         maxvis = max(op.u.shape[-1] for op in operators)
         def pad(values, fill=0):
