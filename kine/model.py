@@ -22,9 +22,27 @@ from functools import partial
 import numpy as np
 
 from flax import linen as nn
+import jax
 from jax import Array
 from jax import numpy as jnp
 from jax.typing import ArrayLike
+
+
+def checkpoint_apply_fn(apply_fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Save training memory by recomputing neural-field intermediates.
+
+    Keep dense-layer outputs for the backward pass and recompute cheaper
+    operations. This can add runtime. Pass the result to
+    ``Trainer.create(apply_fn=...)``.
+    """
+    def apply(variables, grid, train, mutable):
+        def forward(variables, grid):
+            return apply_fn(variables, grid, train=train, mutable=mutable)
+        return jax.checkpoint(
+            forward,
+            policy=jax.checkpoint_policies.dots_with_no_batch_dims_saveable
+        )(variables, grid)
+    return apply
 
 
 def sharpgelu(x: ArrayLike, s: float = 3.0) -> Array:
