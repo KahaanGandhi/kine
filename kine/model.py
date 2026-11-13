@@ -29,11 +29,10 @@ from jax.typing import ArrayLike
 
 
 def checkpoint_apply_fn(apply_fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Save training memory by recomputing neural-field intermediates.
+    """Wrap a neural field's apply function to reduce training memory.
 
-    Keep dense-layer outputs for the backward pass and recompute cheaper
-    operations. This can add runtime. Pass the result to
-    ``Trainer.create(apply_fn=...)``.
+    JAX can save dense-layer outputs and recompute other intermediate values
+    for the backward pass. Pass the result to ``Trainer.create(apply_fn=...)``.
     """
     def apply(variables, grid, train, mutable):
         def forward(variables, grid):
