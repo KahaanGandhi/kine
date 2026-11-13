@@ -1,0 +1,5 @@
+# For an up-to-date Colab GPU runtime (CUDA 13 is given by Colab)
+# Build jax-finufft with scripts/setup_colab_nufft.sh
+-r requirements.txt
+jax[cuda13-local]
+jedi==0.20.1

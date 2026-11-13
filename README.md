@@ -4,6 +4,8 @@
 
 Built on [`JAX`](https://jax.readthedocs.io/) and [`Flax`](https://flax.readthedocs.io/), ``kine`` leverages GPU-accelerated automatic differentiation and JIT compilation for fast training. It uses and complements the [`eht-imaging`](https://github.com/achael/eht-imaging) library for VLBI data handling.
 
+For a current Colab GPU runtime, use the [setup notebook](notebooks/colab_setup.ipynb).
+
 ### Imaging modes
 
 `kine` can be used for the following imaging tasks:

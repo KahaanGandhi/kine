@@ -6,6 +6,13 @@ These instructions build a CUDA-enabled `kine` environment and install `kine`
 on a Linux machine with a recent NVIDIA driver. They were written for a CUDA 
 12.8-capable server.
 
+Colab GPU runtime
+------------------------
+
+For current Colab GPU runtimes, use ``notebooks/colab_setup.ipynb``. It installs
+the requirements and builds ``jax-finufft`` for the selected GPU. Restart the
+notebook after installation.
+
 Build the environment
 ---------------------
 
