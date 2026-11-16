@@ -1,0 +1,166 @@
+{
+  "source_commit": "5e617a24699628639f55dc05f70ed04d68a5e338",
+  "configuration": {
+    "name": "b6_100pct_pe10_512",
+    "npix": 512,
+    "fov_arcsec": 4.0,
+    "pe": 10,
+    "depth": 4,
+    "width": 256,
+    "seed": 163,
+    "init_steps": 2000,
+    "fit_steps": 3000,
+    "init_fwhm_arcsec": 0.8,
+    "init_lr": 0.01,
+    "fit_lr": 0.003,
+    "decay_step": 2000,
+    "decay_factor": 0.3,
+    "save_every": 100,
+    "eps": 1e-06,
+    "require_gpu": true,
+    "max_rows": null,
+    "band": "B6",
+    "selection_seed": 163,
+    "fraction": 1.0,
+    "resume_checkpoint": null
+  },
+  "metrics": {
+    "rows": 13378263,
+    "initialization_relative_error": 0.00484794363618592,
+    "initialization_seconds": 121.50317034125328,
+    "fit_seconds": 316.1457055490464,
+    "fit_steps": 3000,
+    "last_data_loss": 2772.127054159444,
+    "flux_Jy_assumed": 0.7701907753944397,
+    "sampled_peak_GPU_MiB": 8656.0,
+    "image_changes": [
+      {
+        "step": 200,
+        "relative_image_change": 0.19908779859542847
+      },
+      {
+        "step": 300,
+        "relative_image_change": 0.0820278450846672
+      },
+      {
+        "step": 400,
+        "relative_image_change": 0.04982687532901764
+      },
+      {
+        "step": 500,
+        "relative_image_change": 0.04474363476037979
+      },
+      {
+        "step": 600,
+        "relative_image_change": 0.02224862389266491
+      },
+      {
+        "step": 700,
+        "relative_image_change": 0.0224606990814209
+      },
+      {
+        "step": 800,
+        "relative_image_change": 0.014829584397375584
+      },
+      {
+        "step": 900,
+        "relative_image_change": 0.01653829962015152
+      },
+      {
+        "step": 1000,
+        "relative_image_change": 0.0204628836363554
+      },
+      {
+        "step": 1100,
+        "relative_image_change": 0.02522723749279976
+      },
+      {
+        "step": 1200,
+        "relative_image_change": 0.011887989938259125
+      },
+      {
+        "step": 1300,
+        "relative_image_change": 0.017767319455742836
+      },
+      {
+        "step": 1400,
+        "relative_image_change": 0.02072465792298317
+      },
+      {
+        "step": 1500,
+        "relative_image_change": 0.016891509294509888
+      },
+      {
+        "step": 1600,
+        "relative_image_change": 0.02091635949909687
+      },
+      {
+        "step": 1700,
+        "relative_image_change": 0.01983644627034664
+      },
+      {
+        "step": 1800,
+        "relative_image_change": 0.014829738065600395
+      },
+      {
+        "step": 1900,
+        "relative_image_change": 0.014735431410372257
+      },
+      {
+        "step": 2000,
+        "relative_image_change": 0.006838186178356409
+      },
+      {
+        "step": 2100,
+        "relative_image_change": 0.0030163514893501997
+      },
+      {
+        "step": 2200,
+        "relative_image_change": 0.002795091364532709
+      },
+      {
+        "step": 2300,
+        "relative_image_change": 0.002812795341014862
+      },
+      {
+        "step": 2400,
+        "relative_image_change": 0.0029072556644678116
+      },
+      {
+        "step": 2500,
+        "relative_image_change": 0.003048952203243971
+      },
+      {
+        "step": 2600,
+        "relative_image_change": 0.0032241244334727526
+      },
+      {
+        "step": 2700,
+        "relative_image_change": 0.003427232149988413
+      },
+      {
+        "step": 2800,
+        "relative_image_change": 0.0036563563626259565
+      },
+      {
+        "step": 2900,
+        "relative_image_change": 0.003909512422978878
+      },
+      {
+        "step": 3000,
+        "relative_image_change": 0.004185843747109175
+      }
+    ]
+  },
+  "environment": {
+    "jax": "0.5.0",
+    "jaxlib": "0.5.0",
+    "jax-finufft": "1.3.1",
+    "flax": "0.10.2",
+    "optax": "0.2.5",
+    "numpy": "1.26.4",
+    "ehtim": "1.2.10"
+  },
+  "complete_job_seconds": 811,
+  "input_result_sha256": "2960491c7c8a34ebc750ecf026ae675a2f08f6f8d985df973be47537f5cfeea3"
+}
