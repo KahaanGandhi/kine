@@ -97,7 +97,7 @@ repeated once per round (see e.g. :ref:`dynamic-imaging`).
    from jax import numpy as jnp
 
    import kine.utils as ut
-   import kine.video as vi
+   import kine.field as fi
    import kine.model as mo
    import kine.obsdata as ob
    import kine.trainer as tr
@@ -106,7 +106,7 @@ repeated once per round (see e.g. :ref:`dynamic-imaging`).
 
    # Initialize async worker
    q = queue.Queue()
-   ut.init_worker(vi.Video.async_plot, q)
+   ut.init_worker(fi.Video.async_plot, q)
 
 The five ``kine`` modules are always imported under these short aliases. The
 last two lines start a background thread that draws diagnostic figures while
@@ -115,8 +115,8 @@ onto ``q`` and the worker renders the PNG on the CPU without blocking. The
 asynchronous worker is not necessary if saving the images takes little time or 
 is not a bottleneck in the total runtime.
 
-Use ``vi.Video.async_plot`` when the reconstruction has a third coordinate
-(dynamic, multi-epoch, spectral) and ``vi.Image.async_plot`` for static imaging.
+Use ``fi.Video.async_plot`` when the reconstruction has a third coordinate
+(dynamic, multi-epoch, spectral) and ``fi.Image.async_plot`` for static imaging.
 
 
 2. Arguments, hyperparameters, seeds
@@ -168,6 +168,7 @@ of the random initial parameters.
            output=h.tflag['out']
        )
        obs = obs.flag_empty()                   # drop antennas with no data
+       fluxnorm = obs.get_zbl()                 # peak zbl flux (Jy), kept
        obs = obs.norm_to_max()                  # normalize amplitudes
        
 Observations are loaded as :class:`kine.obsdata.Obsdata` objects and minimal 
@@ -212,7 +213,8 @@ Available preprocessing
      - Divides all visibilities and sigmas by the shortest-baseline flux
        density, so that fluxes are expressed in units of the peak zero-baseline
        flux. Required for the static + dynamic decomposition, which assumes
-       normalized components.
+       normalized components. The factor is ``obs.get_zbl()`` and is not
+       stored: keep it (``fluxnorm`` above) to convert the results back to Jy.
 
 For more details on data preprocessing see `eht-imaging's documentation 
 <https://achael.github.io/eht-imaging/obsdata.html>`_.
@@ -301,11 +303,14 @@ columns ``(x, y)``; the 3D grid has shape ``(nt, npix*npix, 3)`` with columns
 ``(t, x, y)`` (or ``(f, x, y)``).  The column order matters, because the 
 positional encoding degrees are given per column.
 
-Spatial coordinates are normalized to :math:`[0, 1]`. Time coordinates are
-normalized to :math:`[0, 1/\mathrm{tdil}]`, where ``tdil`` (default 10) is a 
-factor that sets the scale of the time axis relative to the spatial axes, and 
-therefore how readily the network varies its output along time compared to 
-space.
+Spatial coordinates are normalized to :math:`[0, 1]` and the pixel centres 
+:math:`(k + 1/2)/n_\mathrm{pix}`, :math:`k = 0, \dots, n_\mathrm{pix}-1`, of a 
+unit field of view. This matches the cell-centred pixels of the Fourier 
+operators, so a given coordinate is the same sky position for any ``npix``. 
+Time coordinates are normalized to :math:`[0, 1/\mathrm{tdil}]`, where ``tdil`` 
+(default 10) is a factor that sets the scale of the time axis relative to the 
+spatial axes, and therefore how readily the network varies its output along time 
+compared to space.
 
 Passing ``times=`` places the time coordinates at the real (generally irregular)
 observation times, rescaled to that interval. Passing only ``nt`` places them
@@ -536,11 +541,11 @@ Output channels
    * - ``1``
      - :math:`\hat I` only
    * - ``4``
-     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\sin 2\hat\chi`,
-       :math:`\cos 2\hat\chi`
+     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\cos 2\hat\chi`,
+       :math:`\sin 2\hat\chi`
    * - ``5``
-     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\sin 2\hat\chi`,
-       :math:`\cos 2\hat\chi`, :math:`\hat m_c`
+     - :math:`\hat I`, :math:`\hat m_\ell`, :math:`\cos 2\hat\chi`,
+       :math:`\sin 2\hat\chi`, :math:`\hat m_c`
 
 The EVPA is predicted through its sine and cosine to avoid a discontinuity at
 the wrap, and recovered as
@@ -549,9 +554,15 @@ parameters follow as
 
 .. math::
 
-   \hat Q = -\hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
-   \hat U =  \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
-   \hat V =  \hat I\,\hat m_c .
+   \hat Q = \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
+   \hat U = \hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
+   \hat V = \hat I\,\hat m_c ,
+
+the standard convention, so that :math:`\hat\chi = \tfrac12\arg(\hat Q + i\hat U)`
+is the EVPA (east of north). The sine and cosine channels are not constrained to
+unit length, so the linear polarization fraction reported by
+:class:`~kine.field.Image` and :class:`~kine.field.Video` (and stored in the
+saved Q and U) is :math:`|\hat Q + i\hat U|/\hat I`.
 
 Activations
 ...........
@@ -609,23 +620,23 @@ While it is important that the initialization has roughly the right total flux
 and covers the region where the emission is expected, its detailed shape does 
 not affect the converged result.
 
-The initialization video (or image) is built with a :class:`kine.video.Video` (or
-:class:`kine.video.Image`) object:
+The initialization video (or image) is built with a :class:`kine.field.Video` (or
+:class:`kine.field.Image`) object:
 
 .. code-block:: python
 
-   init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    init_vid.add_tophat(lcurve, h.init_params)
    init_vid.plot()
 
-:meth:`~kine.video.Video.add_tophat` builds a blurred disk carrying the
+:meth:`~kine.field.Video.add_tophat` builds a blurred disk carrying the
 light-curve flux in each frame, from ``init_params``: ``fwhm`` (disk diameter in
 µas), ``blur`` (Gaussian blurring in µas), and ``posx``/``posy`` (offsets in
 pixels). The polarization channels can be initialized to constant values with 
-:meth:`~kine.video.Video.add_constant_linpol` /
-:meth:`~kine.video.Video.add_constant_circpol`. Alternatively the initialization 
-video can be created from a chosen input file with :meth:`~kine.video.Video.from_h5` 
-or :meth:`~kine.video.Video.add_video_i` (for Stokes I only).
+:meth:`~kine.field.Video.add_constant_linpol` /
+:meth:`~kine.field.Video.add_constant_circpol`. Alternatively the initialization 
+video can be created from a chosen input file with :meth:`~kine.field.Video.from_h5` 
+or :meth:`~kine.field.Video.add_video_i` (for Stokes I only).
 
 **Polarimetric initialization.** When Stokes I is fitted together with linear
 polarization, the initialization target must stack the Stokes I, linear 
@@ -634,9 +645,9 @@ the circular polarization fraction is appended as a fourth channel:
 
 .. code-block:: python
 
-   init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    init_vid.add_tophat(lcurve, h.init_params)              # tot. int.
-   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0) # lin. pol.
+   init_vid.add_constant_linpol(linpolfrac=0.2, evpa=-1.0) # lin. pol. (EVPA in rad)
    init_vid.add_constant_circpol(circpolfrac=0.05)         # circ. pol.
 
    init_arr = init_vid.iarr                                                         # Stokes I only
@@ -648,7 +659,7 @@ the circular polarization fraction is appended as a fourth channel:
 
 The channel order is fixed to :math:`(I, m_\ell, \chi, m_c)`. Each array has
 shape ``(ntimes, npix, npix, 1)``, or ``(npix, npix, 1)`` for a
-:class:`kine.video.Image`.
+:class:`kine.field.Image`.
 If Stokes I is instead held fixed and only the polarization is fitted with
 :class:`kine.model.NeuralFieldPol`, the targets are passed separately as
 ``init_vid_ml`` and ``init_vid_x`` (see :ref:`polarimetric-imaging`).
@@ -659,7 +670,7 @@ products:
 
 .. code-block:: python
 
-   init = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+   init = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
    lloss, loss = [], 0
 
    for i in (pbar := tqdm(range(1, h.initniter+1))):
@@ -739,7 +750,7 @@ gains together when ``visI`` is.
 
    tr.NPIX = h.npix
 
-   video = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
+   video = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
    lloss, loss = {dp: [] for dp in h.data_prod} | {'lcurve': []}, 0
 
    for i in (pbar := tqdm(range(1, h.niter+1))):
@@ -887,12 +898,16 @@ regularizers of the branch in use.
 
    # Re-sample the network on a finer grid
    grid_out = ut.get_grid(h.npix_out, h.npix_out, ntimes, times=times)
-   video = vi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
-   video.from_state(state, grid_out)
+   video = fi.Video(times, h.npix_out, fov, obs.ra, obs.dec, h.niter)
+   video.from_state(state, grid_out, npix_train=h.npix)
    video.save_h5('./output.h5')
 
-Since the trained network is continuous, the final result is not necessarily the array produced by the last training iteration but it can be a new evaluation of 
+Since the trained network is continuous, the final result is not necessarily the array produced by the last training iteration but it can be a new evaluation of
 the trained network on a finer grid.
+The network's Stokes I output is in Jy per *training* pixel, so pass
+``npix_train`` whenever the output grid has a different ``npix``: Stokes I is
+then rescaled by :math:`(n_\mathrm{train}/n_\mathrm{out})^2` and the total flux
+density is preserved.
 The same applies to time: passing a regular ``times`` array to ``get_grid`` 
 produces evenly spaced frames from irregularly sampled observations.
 
@@ -904,21 +919,21 @@ produces evenly spaced frames from irregularly sampled observations.
 
    * - Method
      - Use
-   * - :meth:`~kine.video.Video.from_video` / :meth:`~kine.video.Image.from_image`
+   * - :meth:`~kine.field.Video.from_video` / :meth:`~kine.field.Image.from_image`
      - Populate the object from an array returned by ``train_step``.
-   * - :meth:`~kine.video.Video.from_state`
+   * - :meth:`~kine.field.Video.from_state`
      - Evaluate a trained network on an arbitrary grid.
-   * - :meth:`~kine.video.Video.from_states`
+   * - :meth:`~kine.field.Video.from_states`
      - Evaluate and recombine the static and dynamic networks.
-   * - :meth:`~kine.video.Video.plot`
+   * - :meth:`~kine.field.Video.plot`
      - Diagnostic figure: frames, loss, and polarization panels if present.
-   * - :meth:`~kine.video.Video.plot_gif`
+   * - :meth:`~kine.field.Video.plot_gif`
      - Saves video as GIF.
-   * - :meth:`~kine.video.Video.save_h5`
+   * - :meth:`~kine.field.Video.save_h5`
      - Saves video in HDF5 format.
-   * - :meth:`~kine.video.Video.save_fits`
+   * - :meth:`~kine.field.Video.save_fits`
      - Saves image in FITS format.
-   * - :meth:`~kine.video.Video.save_gains`
+   * - :meth:`~kine.field.Video.save_gains`
      - Saves fitted gains in a TXT file.
 
 
@@ -966,8 +981,8 @@ Static imaging
 
 Reconstruct a single image from a single observation.
 
-- *Block 1* — use ``vi.Image.async_plot`` and the :class:`kine.video.Image`
-  class throughout, instead of :class:`kine.video.Video`.
+- *Block 1* — use ``fi.Image.async_plot`` and the :class:`kine.field.Image`
+  class throughout, instead of :class:`kine.field.Video`.
 - *Block 3* — no ``split_obs``: the whole observation is fitted as one block.
   The flux constraint is the single number ``totflux = obs.get_zbl()``.
 - *Block 4* — use a 2D grid, ``ut.get_grid(h.npix, h.npix)``. ``nposenc`` 
@@ -996,8 +1011,8 @@ Reconstruct a single image from a single observation.
   .. code-block:: python
 
      grid_out = ut.get_grid(h.npix_out, h.npix_out)
-     image = vi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
-     image.from_state(state, grid_out)
+     image = fi.Image(h.npix_out, fov, obs.ra, obs.dec, h.niter)
+     image.from_state(state, grid_out, npix_train=h.npix)
      image.save_fits('./output_image.fits')
 
 .. _spectral-imaging:
@@ -1099,9 +1114,11 @@ The source is modelled as a persistent image plus a time-variable video,
 where :math:`f_\mathrm{static}` is a 2D neural field, :math:`f_\mathrm{dynamic}`
 a 3D one, :math:`L(t)` is the light curve, and :math:`S_\mathrm{static}` is the
 flux of the persistent component. Both fields are normalized to unit total flux
-so the physical flux value is carried by the light curve. This is also why the 
-data must be normalized with :meth:`~kine.obsdata.Obsdata.norm_to_max` in block 
-3.
+so the physical flux value is carried by the light curve. This is also why the
+data must be normalized with :meth:`~kine.obsdata.Obsdata.norm_to_max` in block
+3. Training therefore runs in units of the peak zero-baseline flux, and every
+saved output (plots and videos) is multiplied back by ``fluxnorm`` (the
+``obs.get_zbl()`` value kept before normalizing) to be in Jy.
 
 Both networks use ``outactiv=nn.sigmoid`` rather than softplus, since their
 outputs are normalized fractions; the static network is shallower
@@ -1164,11 +1181,18 @@ both networks to a disk, starts fitting the gains (``ut.Schedule(5e-5, 1e-3, h.n
            )
        )
 
-The result is written with :meth:`~kine.video.Video.from_states`, which
+The result is written with :meth:`~kine.field.Video.from_states`, which
 evaluates both networks and recombines them with the light curve, plus
-``save_h5`` and ``save_gains``.
+``save_h5`` and ``save_gains``. The light curve and static flux passed to it are
+rescaled to Jy, so the saved video is in physical units:
 
-**Step 2** repeats Step 1 at ``npix_2`` with two changes. First the networks are initialized to the output of Step 1 via :meth:`~kine.video.Video.from_h5` rather 
+.. code-block:: python
+
+   video.from_states(s_state, d_state, s_grid, d_grid,
+                     lcurve * fluxnorm, min_lcurve * fluxnorm,
+                     amp_gains=amp_gains, npix_train=h.npix_1)
+
+**Step 2** repeats Step 1 at ``npix_2`` with two changes. First the networks are initialized to the output of Step 1 via :meth:`~kine.field.Video.from_h5` rather 
 than from a disk. The dynamic component in the initialization video is blurred 
 (``blur=0`` with ``fn=np.median`` for the static field, ``blur=30`` for the
 dynamic one). Then the dynamic network switches to the sharper activation
@@ -1207,7 +1231,7 @@ complex visibilities.
 
      network = mo.NeuralFieldPol(
          posenc_deg=tuple(h.nposenc),
-         outdim=3,                  # (ml, sin 2xi, cos 2xi)
+         outdim=3,                  # (ml, cos 2xi, sin 2xi)
          depth=h.depth,
          width=h.width,
          activ=sharpgelu,
@@ -1221,7 +1245,7 @@ complex visibilities.
 
   .. code-block:: python
 
-     init_vid = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
+     init_vid = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.initniter)
      init_vid.add_video_i(par.obs.replace('uvfits', 'hdf5'))
      init_vid.add_constant_linpol()
 
@@ -1252,8 +1276,8 @@ complex visibilities.
 
   .. math::
 
-     \hat Q = -\hat I\,\hat m_\ell \sin 2\hat\chi, \qquad
-     \hat U =  \hat I\,\hat m_\ell \cos 2\hat\chi,
+     \hat Q = \hat I\,\hat m_\ell \cos 2\hat\chi, \qquad
+     \hat U = \hat I\,\hat m_\ell \sin 2\hat\chi,
 
   with a regularizer term :math:`\langle |m_\ell|\,e^{-|I|/\tau}\rangle` with
   :math:`\tau = 0.01`, suppressing polarization in regions with no total
@@ -1264,7 +1288,7 @@ complex visibilities.
 
   .. code-block:: python
 
-     video = vi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
+     video = fi.Video(times, h.npix, fov, obs.ra, obs.dec, h.niter)
      video.iarr = init_vid.iarr.copy()
      ...
      video.from_video(out, loss=lloss)
