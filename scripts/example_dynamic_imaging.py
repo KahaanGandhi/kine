@@ -48,7 +48,7 @@ from flax import linen as nn
 from jax import numpy as jnp
 
 import kine.utils as ut
-import kine.video as vi
+import kine.field as fi
 import kine.model as mo
 import kine.obsdata as ob
 import kine.trainer as tr
@@ -58,7 +58,7 @@ warnings.filterwarnings('ignore')
 
 # Initialize async worker
 q = queue.Queue()
-ut.init_worker(vi.Video.async_plot, q)
+ut.init_worker(fi.Video.async_plot, q)
 
 # ______________________________________________________________________________
 # Load hyperparameters and set RNG keys
@@ -104,6 +104,8 @@ with ut.no_print():
         output=h.tflag['out']
     )
     obs = obs.flag_empty()
+    # Peak zero-baseline flux density (Jy)
+    fluxnorm = obs.get_zbl()
     obs = obs.norm_to_max()
 
     # Split data
@@ -241,7 +243,7 @@ d_sched = optax.piecewise_constant_schedule(
 )
 d_state = tr.Trainer.create(
     apply_fn=d_network.apply,
-    params=d_params['params']
+    params=d_params['params'],
     batch_stats=d_batch_stats['batch_stats'],
     tx=optax.adamax(d_sched)
 )
@@ -253,7 +255,7 @@ d_state = tr.Trainer.create(
 # Create static and dynamic initialization
 
 # Static initialization
-init_img = vi.Video(
+init_img = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_0,
     fov,
@@ -265,7 +267,7 @@ init_img.add_tophat(jnp.ones([1]), h.init_params)
 init_img.plot()
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
+init_vid = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
 init_vid.add_tophat(jnp.ones_like(lcurve), h.init_params)
 init_vid.plot()
 
@@ -273,7 +275,7 @@ init_vid.plot()
 # Static initialization training
 
 # Initialize video and loss
-s_init = vi.Video(
+s_init = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_0,
     fov,
@@ -323,7 +325,7 @@ q.join()
 # Dynamic initialization training
 
 # Initialize video and loss
-d_init = vi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
+d_init = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.initniter_0)
 lloss, loss = [], 0
 
 # Looping over epochs
@@ -415,7 +417,7 @@ pg_state = tr.Trainer.create(
 # Traininig loop
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.niter_0)
+video = fi.Video(times, h.npix_0, fov, obs.ra, obs.dec, h.niter_0)
 lloss, loss = {dp: [] for dp in h.data_prod} | {'border': [], 'min_dyn': []}, 0
 
 # Looping over epochs
@@ -453,10 +455,10 @@ for i in (pbar := tqdm(range(1, h.niter_0+1))):
         q.put(
             dict(
                 video=video,
-                out=out,
+                out=out * fluxnorm,
                 loss=lloss,
-                s_out=s_out,
-                d_out=d_out,
+                s_out=s_out * fluxnorm,
+                d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
                 outpath='./out_0.png'
             )
@@ -571,7 +573,7 @@ d_state = tr.Trainer.create(
 # Create static and dynamic initialization
 
 # Static initialization
-init_img = vi.Video(
+init_img = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_1,
     fov,
@@ -583,7 +585,7 @@ init_img.add_tophat(jnp.ones([1]), h.init_params)
 init_img.plot()
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
+init_vid = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
 init_vid.add_tophat(jnp.ones_like(lcurve), h.init_params)
 init_vid.plot()
 
@@ -591,7 +593,7 @@ init_vid.plot()
 # Static initialization training
 
 # Initialize video and loss
-s_init = vi.Video(
+s_init = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_1,
     fov,
@@ -641,7 +643,7 @@ q.join()
 # Dynamic initialization training
 
 # Initialize video and loss
-d_init = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
+d_init = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.initniter_1)
 lloss, loss = [], 0
 
 # Looping over epochs
@@ -730,7 +732,7 @@ pg_state = tr.Trainer.create(
 tr.NPIX = h.npix_1
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
+video = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
 lloss = {dp: [] for dp in h.data_prod} \
       | {'border': [], 's_flux': [], 'd_flux': []}
 loss = 0
@@ -772,10 +774,10 @@ for i in (pbar := tqdm(range(1, h.niter_1+1))):
         q.put(
             dict(
                 video=video,
-                out=out,
+                out=out * fluxnorm,
                 loss=lloss,
-                s_out=s_out,
-                d_out=d_out,
+                s_out=s_out * fluxnorm,
+                d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
                 outpath='./out_1.png'
             )
@@ -791,8 +793,12 @@ print(
 Saving results...
     """
 )
-video.from_video(out, loss=lloss)
-video.plot_gif(s_out=s_out, d_out=d_out, outpath='./out_1.gif')
+video.from_video(out * fluxnorm, loss=lloss)
+video.plot_gif(
+    s_out=s_out * fluxnorm,
+    d_out=d_out * fluxnorm,
+    outpath='./out_1.gif'
+)
 
 # .......................................
 # Save video, gains, and model parameters
@@ -807,15 +813,16 @@ print(
 Sampling network on a finer grid and saving results...
     """
 )
-video = vi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
+video = fi.Video(times, h.npix_1, fov, obs.ra, obs.dec, h.niter_1)
 video.from_states(
     s_state,
     d_state,
     s_grid,
     d_grid,
-    lcurve,
-    min_lcurve,
-    amp_gains=amp_gains
+    lcurve * fluxnorm,
+    min_lcurve * fluxnorm,
+    amp_gains=amp_gains,
+    npix_train=h.npix_1
 )
 video.save_h5('./video_1.h5')
 video.save_gains('./gains_1.txt')
@@ -926,7 +933,7 @@ d_state = tr.Trainer.create(
 # Create static and dynamic initialization
 
 # Static initialization
-init_img = vi.Video(
+init_img = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_2,
     fov,
@@ -938,7 +945,7 @@ init_img.from_h5('./video_1.h5', blur=0, fn=np.median)
 init_img.plot()
 
 # Dynamic initialization
-init_vid = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
+init_vid = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
 init_vid.from_h5('./video_1.h5', blur=30, fn=np.median)
 init_vid.plot()
 
@@ -946,7 +953,7 @@ init_vid.plot()
 # Static initialization training
 
 # Initialize video and loss
-s_init = vi.Video(
+s_init = fi.Video(
     jnp.array([obs.tstart]),
     h.npix_2,
     fov,
@@ -996,7 +1003,7 @@ q.join()
 # Dynamic initialization training
 
 # Initialize video and loss
-d_init = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
+d_init = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.initniter_2)
 lloss, loss = [], 0
 
 # Looping over epochs
@@ -1080,7 +1087,7 @@ pg_state = tr.Trainer.create(
 tr.NPIX = h.npix_2
 
 # Initialize video and loss
-video = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
+video = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
 lloss = {dp: [] for dp in h.data_prod} \
       | {'border': [], 's_flux': [], 'd_flux': []}
 loss = 0
@@ -1123,10 +1130,10 @@ for i in (pbar := tqdm(range(1, h.niter_2+1))):
         q.put(
             dict(
                 video=video,
-                out=out,
+                out=out * fluxnorm,
                 loss=lloss,
-                s_out=s_out,
-                d_out=d_out,
+                s_out=s_out * fluxnorm,
+                d_out=d_out * fluxnorm,
                 amp_gains=amp_gains,
                 outpath='./out_2.png'
             )
@@ -1142,8 +1149,12 @@ print(
 Saving results...
     """
 )
-video.from_video(out, loss=lloss)
-video.plot_gif(s_out=s_out, d_out=d_out, outpath='./out_2.gif')
+video.from_video(out * fluxnorm, loss=lloss)
+video.plot_gif(
+    s_out=s_out * fluxnorm,
+    d_out=d_out * fluxnorm,
+    outpath='./out_2.gif'
+)
 
 # .......................................
 # Save video, gains, and model parameters
@@ -1158,15 +1169,16 @@ print(
 Sampling network on a finer grid and saving results...
     """
 )
-video = vi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
+video = fi.Video(times, h.npix_2, fov, obs.ra, obs.dec, h.niter_2)
 video.from_states(
     s_state,
     d_state,
     s_grid,
     d_grid,
-    lcurve,
-    min_lcurve,
-    amp_gains=amp_gains
+    lcurve * fluxnorm,
+    min_lcurve * fluxnorm,
+    amp_gains=amp_gains,
+    npix_train=h.npix_2
 )
 video.save_h5('./video_2.h5')
 video.save_gains('./gains_2.txt')
