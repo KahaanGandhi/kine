@@ -29,6 +29,7 @@ except ImportError:
     print('Warning: NUFFT not installed \n')
 
 from . import utils as ut
+from .batching import NUFFTVisibilityBatcher
 from .fourier import NUFFT
 
 
@@ -55,19 +56,36 @@ class Trainer(train_state.TrainState):
 
     batch_stats: Any | None = None
 
+    # Extended by Kahaan Gandhi for optional visibility batching
     @staticmethod
-    @jax.jit
-    def train_step(kwargs: OrderedDict) -> list[Array]:
+    def train_step(
+            kwargs: OrderedDict,
+            vis_batcher: NUFFTVisibilityBatcher | None = None
+    ) -> list[Array]:
         """Training step.
 
         Args:
             kwargs: Training states and other variables required
                 for loss computations. Input as an OrderedDict since
                 @jax.jit can change the order in which kwargs are passed.
+            vis_batcher: Draw one ``visI`` batch before the compiled step.
+                Omit it to use the original full-data path.
 
         Returns:
             Total loss, loss dictionary, sampled video, and training states
         """
+        if vis_batcher is not None:
+            if 'data' not in kwargs or set(kwargs['data']) != {'visI'}:
+                raise ValueError("Visibility batching requires one visI dataset")
+            # Choose the batch before JIT
+            kwargs = kwargs.copy()
+            kwargs['data'] = {'visI': vis_batcher.sample()}
+        return Trainer._train_step_jit(kwargs)
+
+    @staticmethod
+    @jax.jit
+    def _train_step_jit(kwargs: OrderedDict) -> list[Array]:
+        """Compute the training update with JAX."""
         # Unpack states
         keys = list(kwargs.keys())
         states = [kwargs.pop(key) for key in keys if 'state' in key]
