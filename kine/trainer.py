@@ -31,6 +31,7 @@ except ImportError:
 from . import utils as ut
 from .batching import NUFFTVisibilityBatcher
 from .fourier import NUFFT
+from .parallel import NUFFTParallelTrainer
 
 
 NPIX: int = 0
@@ -56,11 +57,12 @@ class Trainer(train_state.TrainState):
 
     batch_stats: Any | None = None
 
-    # Extended by Kahaan Gandhi for optional visibility batching
+    # Extended by Kahaan Gandhi for optional visibility batching and GPU parallelism
     @staticmethod
     def train_step(
             kwargs: OrderedDict,
-            vis_batcher: NUFFTVisibilityBatcher | None = None
+            vis_batcher: NUFFTVisibilityBatcher | None = None,
+            parallel: NUFFTParallelTrainer | None = None
     ) -> list[Array]:
         """Training step.
 
@@ -69,17 +71,28 @@ class Trainer(train_state.TrainState):
                 for loss computations. Input as an OrderedDict since
                 @jax.jit can change the order in which kwargs are passed.
             vis_batcher: Draw one ``visI`` batch before the compiled step.
-                Omit it to use the original full-data path.
+            parallel: Split a fixed ``visI`` NUFFT dataset across local GPUs.
 
         Returns:
             Total loss, loss dictionary, sampled video, and training states
         """
+        # GPU parallelism: each GPU fits a different share of the visI rows
+        if parallel is not None:
+            if vis_batcher is not None:
+                raise ValueError("Use visibility batching or GPU parallelism, not both")
+            keys = set(kwargs)
+            if (keys - {'state', 'grid', 'data', 'lcurve'}
+                    or not {'state', 'grid', 'data'} <= keys
+                    or set(kwargs['data']) != {'visI'}):
+                raise ValueError("GPU parallelism requires one visI training dataset")
+            return parallel.train_step(kwargs)
+        # Visibility batching: select rows before the compiled training step
         if vis_batcher is not None:
             if 'data' not in kwargs or set(kwargs['data']) != {'visI'}:
                 raise ValueError("Visibility batching requires one visI dataset")
-            # Choose the batch before JIT
             kwargs = kwargs.copy()
             kwargs['data'] = {'visI': vis_batcher.sample()}
+        # Run the original step with either the full data or the selected batch
         return Trainer._train_step_jit(kwargs)
 
     @staticmethod
@@ -940,9 +953,11 @@ class Trainer(train_state.TrainState):
         # The video losses normalize by the number of unpadded measurements
         values = {'target': data['target'], 'sigma': data['sigma'],
                   'padmask': data.get('padmask', jnp.ones_like(data['sigma']))}
-        # Zero-valued padded visibilities can give undefined gradients
         if 'padmask' in data:
-            vis = jnp.where(data['padmask'][:, None, :], vis, 1 + 0j)
+            # Give padded rows a nonzero value to keep gradients defined
+            # For multiple frames, add an axis so the mask covers every baseline leg
+            mask = data['padmask'] if vis.ndim == 2 else data['padmask'][:, None, :]
+            vis = jnp.where(mask, vis, 1 + 0j)
         # vis has shape (legs, measurements) for one image, or
         # (frames, legs, measurements) for multiple images
         leg_axis = 0 if vis.ndim == 2 else 1
